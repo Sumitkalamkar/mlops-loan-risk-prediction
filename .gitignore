@@ -1,0 +1,41 @@
+models/*
+src/__pycache__/*
+app.cpython-*
+
+# DVC managed files (tracked by DVC, not git)
+/data/loan_data.csv
+/data/processed/
+!*.dvc
+
+# DVC internals
+.dvc/config.local
+.dvc/tmp/
+.dvc/cache/
+
+# MLflow
+mlruns/
+.mlflow/
+mlflow.db
+
+# Models (tracked by DVC)
+models/*.pkl
+!models/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Artifacts
+artifacts/

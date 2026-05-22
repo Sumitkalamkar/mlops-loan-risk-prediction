@@ -1,0 +1,52 @@
+stages:
+  # Stage 1: Validate raw data quality
+  data_validation:
+    cmd: python src/data_validation.py
+    deps:
+      - src/data_validation.py
+      - data/loan_data.csv
+
+  # Stage 2: Clean the data
+  clean_data:
+    cmd: python src/data_cleaning.py
+    deps:
+      - src/data_cleaning.py
+      - data/loan_data.csv
+    outs:
+      - data/processed/cleaned_data.csv
+
+  # Stage 3: Feature engineering
+  feature_engineering:
+    cmd: python src/feature_engineering.py
+    deps:
+      - src/feature_engineering.py
+      - data/processed/cleaned_data.csv
+    outs:
+      - data/processed/featured_data.csv
+
+  # Stage 4: Train model
+  train:
+    cmd: python src/train.py
+    deps:
+      - src/train.py
+      - src/preprocess.py
+      - data/processed/featured_data.csv
+    outs:
+      - models/model.pkl
+      - models/scaler.pkl
+      - models/label_encoder.pkl
+      - models/feature_names.pkl
+      - data/processed/test_data.csv
+
+  # Stage 5: Evaluate model (quality gate)
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - models/model.pkl
+      - models/scaler.pkl
+      - models/label_encoder.pkl
+      - data/processed/test_data.csv
+    metrics:
+      - metrics.json:
+          cache: false
