@@ -69,7 +69,7 @@ A complete MLOps pipeline for training, versioning, and deploying a machine lear
                                 +----------+   
 ```
 
-![Pipeline](pipeline.png)
+![Pipeline](jenkins_pipeline.png)
 ---
 
 ## Prerequisites
