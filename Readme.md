@@ -71,7 +71,10 @@ A complete MLOps pipeline for training, versioning, and deploying a machine lear
 
 ![Pipeline](jenkins_pipeline.png)
 ---
-
+![Pipeline](Fastapi_output.png)
+---
+![Pipeline](MLflow_interface.png)
+---
 ## Prerequisites
 
 ### Local Machine
