@@ -22,6 +22,8 @@ pipeline {
         API_PORT = "8000"
         MLFLOW_PORT = "5000"
         AWS_DEFAULT_REGION = "ap-south-1"
+
+        CONDA_PYTHON = "/opt/conda/envs/mlops/bin/python"
     }
 
     stages {
@@ -40,14 +42,13 @@ pipeline {
                 echo "Setting up Python virtual environment..."
 
                 sh '''
-                    python3 --version
-                    pip3 --version
+                    ${CONDA_PYTHON} --version
 
-                    python3 -m venv venv
+                    ${CONDA_PYTHON} -m venv venv
 
                     ./venv/bin/pip install --upgrade pip setuptools wheel
 
-                    ./venv/bin/pip install -r requirements.txt --no-cache-dir
+                    ./venv/bin/pip install --prefer-binary -r requirements.txt --no-cache-dir
 
                     echo "Installed dependencies successfully"
 
@@ -123,7 +124,7 @@ pipeline {
                 echo "Checking model metrics..."
 
                 sh '''
-                    python3 - <<EOF
+                    ./venv/bin/python - <<EOF
 import json
 import sys
 
@@ -195,7 +196,7 @@ EOF
                 echo "Checking API health..."
 
                 sh '''
-                    sleep 15
+                    sleep 20
 
                     curl http://localhost:${API_PORT}/docs
                 '''
@@ -243,6 +244,8 @@ PIPELINE FAILED
                 cp -r dvc.lock artifacts/ || true
 
                 cp -r models/*.pkl artifacts/ || true
+
+                cp -r mlflow.log artifacts/ || true
             '''
 
             archiveArtifacts artifacts: 'artifacts/**', fingerprint: true
