@@ -7,7 +7,6 @@ pipeline {
             choices: ['false', 'true'],
             description: 'Skip training and use existing model'
         )
-
         string(
             name: 'MIN_ACCURACY',
             defaultValue: '0.70',
@@ -16,14 +15,13 @@ pipeline {
     }
 
     environment {
-        PROJECT_NAME = "loan-risk-prediction"
-        DOCKER_IMAGE = "loan-risk-app"
-        CONTAINER_NAME = "loan-risk-container"
-        API_PORT = "8000"
-        MLFLOW_PORT = "5000"
+        PROJECT_NAME       = "loan-risk-prediction"
+        DOCKER_IMAGE       = "loan-risk-app"
+        CONTAINER_NAME     = "loan-risk-container"
+        API_PORT           = "8000"
+        MLFLOW_PORT        = "5000"
         AWS_DEFAULT_REGION = "ap-south-1"
-
-        CONDA_PYTHON = "/opt/conda/envs/mlops/bin/python"
+        CONDA_PYTHON       = "/opt/conda/envs/mlops/bin/python"
     }
 
     stages {
@@ -31,43 +29,34 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 echo "Cloning GitHub repository..."
-
                 git branch: 'main',
-                url: 'https://github.com/Sumitkalamkar/mlops-loan-risk-prediction.git'
+                    url: 'https://github.com/Sumitkalamkar/mlops-loan-risk-prediction.git'
             }
         }
 
         stage('Setup Environment') {
             steps {
                 echo "Setting up Python virtual environment..."
-
                 sh '''
                     echo "Using Conda Python..."
-
                     ${CONDA_PYTHON} --version
 
                     echo "Removing old venv if exists..."
-
                     rm -rf venv
 
                     echo "Creating fresh Python 3.11 virtual environment..."
-
                     ${CONDA_PYTHON} -m venv venv
 
                     echo "Activating fresh venv..."
-
                     ./venv/bin/python --version
 
                     echo "Upgrading pip tools..."
-
                     ./venv/bin/pip install --upgrade pip setuptools wheel
 
                     echo "Installing project requirements..."
-
                     ./venv/bin/pip install --prefer-binary -r requirements.txt --no-cache-dir
 
                     echo "Installed dependencies successfully"
-
                     ./venv/bin/python --version
                     ./venv/bin/dvc --version
                     ./venv/bin/mlflow --version
@@ -77,21 +66,30 @@ pipeline {
 
         stage('Configure AWS') {
             steps {
-                echo "Configuring AWS region..."
+                echo "Configuring AWS credentials and region..."
+                withCredentials([
+                    string(credentialsId: 'AWS_ACCESS_KEY_ID',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        mkdir -p ~/.aws
 
-                sh '''
-                    mkdir -p ~/.aws
+                        echo "[default]"                                       >  ~/.aws/credentials
+                        echo "aws_access_key_id=${AWS_ACCESS_KEY_ID}"         >> ~/.aws/credentials
+                        echo "aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" >> ~/.aws/credentials
 
-                    echo "[default]" > ~/.aws/config
-                    echo "region=${AWS_DEFAULT_REGION}" >> ~/.aws/config
-                '''
+                        echo "[default]"                                       >  ~/.aws/config
+                        echo "region=${AWS_DEFAULT_REGION}"                   >> ~/.aws/config
+
+                        echo "AWS credentials configured successfully"
+                    '''
+                }
             }
         }
 
         stage('Pull Data From DVC Remote') {
             steps {
                 echo "Pulling data and models from S3..."
-
                 sh '''
                     ./venv/bin/dvc pull
                 '''
@@ -101,27 +99,26 @@ pipeline {
         stage('Start MLflow Server') {
             steps {
                 echo "Starting MLflow server..."
-
                 sh '''
+                    fuser -k ${MLFLOW_PORT}/tcp || true
+
                     nohup ./venv/bin/mlflow ui \
-                    --host 0.0.0.0 \
-                    --port ${MLFLOW_PORT} \
-                    > mlflow.log 2>&1 &
+                        --host 0.0.0.0 \
+                        --port ${MLFLOW_PORT} \
+                        > mlflow.log 2>&1 &
+
+                    sleep 5
+                    echo "MLflow server started on port ${MLFLOW_PORT}"
                 '''
             }
         }
 
         stage('Run ML Pipeline') {
-
             when {
-                expression {
-                    params.SKIP_TRAINING == 'false'
-                }
+                expression { params.SKIP_TRAINING == 'false' }
             }
-
             steps {
                 echo "Running DVC pipeline..."
-
                 sh '''
                     ./venv/bin/dvc repro
                 '''
@@ -129,16 +126,11 @@ pipeline {
         }
 
         stage('Quality Gate') {
-
             when {
-                expression {
-                    params.SKIP_TRAINING == 'false'
-                }
+                expression { params.SKIP_TRAINING == 'false' }
             }
-
             steps {
                 echo "Checking model metrics..."
-
                 sh '''
                     ./venv/bin/python - <<EOF
 import json
@@ -148,7 +140,6 @@ with open("metrics.json") as f:
     metrics = json.load(f)
 
 accuracy = metrics.get("accuracy", 0)
-
 print(f"Model Accuracy: {accuracy}")
 
 threshold = float("${MIN_ACCURACY}")
@@ -164,16 +155,11 @@ EOF
         }
 
         stage('Push Artifacts To S3') {
-
             when {
-                expression {
-                    params.SKIP_TRAINING == 'false'
-                }
+                expression { params.SKIP_TRAINING == 'false' }
             }
-
             steps {
                 echo "Pushing artifacts to S3..."
-
                 sh '''
                     ./venv/bin/dvc push
                 '''
@@ -183,7 +169,6 @@ EOF
         stage('Build Docker Image') {
             steps {
                 echo "Building Docker image..."
-
                 sh '''
                     docker build -t ${DOCKER_IMAGE}:latest .
                 '''
@@ -193,16 +178,15 @@ EOF
         stage('Deploy Application') {
             steps {
                 echo "Deploying FastAPI container..."
-
                 sh '''
                     docker stop ${CONTAINER_NAME} || true
-
-                    docker rm ${CONTAINER_NAME} || true
+                    docker rm   ${CONTAINER_NAME} || true
 
                     docker run -d \
-                    --name ${CONTAINER_NAME} \
-                    -p ${API_PORT}:8000 \
-                    ${DOCKER_IMAGE}:latest
+                        --name ${CONTAINER_NAME} \
+                        -p ${API_PORT}:8000 \
+                        --restart unless-stopped \
+                        ${DOCKER_IMAGE}:latest
                 '''
             }
         }
@@ -210,11 +194,17 @@ EOF
         stage('Health Check') {
             steps {
                 echo "Checking API health..."
-
                 sh '''
                     sleep 20
 
-                    curl http://localhost:${API_PORT}/docs
+                    for i in 1 2 3 4 5; do
+                        curl -sf http://localhost:${API_PORT}/health && break
+                        echo "Attempt $i failed, retrying in 5s..."
+                        sleep 5
+                    done
+
+                    curl -sf http://localhost:${API_PORT}/docs
+                    echo "Health check passed!"
                 '''
             }
         }
@@ -223,24 +213,19 @@ EOF
     post {
 
         success {
-
-            echo '''
+            echo """
 ===================================================
 PIPELINE COMPLETED SUCCESSFULLY
 ===================================================
 
-FastAPI URL:
-http://YOUR_PUBLIC_IP:8000/docs
-
-MLflow URL:
-http://YOUR_PUBLIC_IP:5000
+FastAPI URL : http://YOUR_PUBLIC_IP:${API_PORT}/docs
+MLflow URL  : http://YOUR_PUBLIC_IP:${MLFLOW_PORT}
 
 ===================================================
-'''
+"""
         }
 
         failure {
-
             echo '''
 ===================================================
 PIPELINE FAILED
@@ -249,21 +234,14 @@ PIPELINE FAILED
         }
 
         always {
-
             echo "Collecting pipeline artifacts..."
-
             sh '''
                 mkdir -p artifacts
-
-                cp -r metrics.json artifacts/ || true
-
-                cp -r dvc.lock artifacts/ || true
-
-                cp -r models/*.pkl artifacts/ || true
-
-                cp -r mlflow.log artifacts/ || true
+                cp -r metrics.json  artifacts/ || true
+                cp -r dvc.lock      artifacts/ || true
+                cp -r models/*.pkl  artifacts/ || true
+                cp -r mlflow.log    artifacts/ || true
             '''
-
             archiveArtifacts artifacts: 'artifacts/**', fingerprint: true
         }
     }
