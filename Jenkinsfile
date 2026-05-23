@@ -123,6 +123,8 @@ pipeline {
             steps {
                 echo "Running DVC pipeline..."
                 sh '''
+                    # Add venv to PATH so DVC uses venv Python for all pipeline stages
+                    export PATH=$(pwd)/venv/bin:$PATH
                     ./venv/bin/dvc repro
                 '''
             }
@@ -164,6 +166,7 @@ EOF
             steps {
                 echo "Pushing artifacts to S3..."
                 sh '''
+                    export PATH=$(pwd)/venv/bin:$PATH
                     ./venv/bin/dvc push
                 '''
             }
