@@ -42,11 +42,27 @@ pipeline {
                 echo "Setting up Python virtual environment..."
 
                 sh '''
+                    echo "Using Conda Python..."
+
                     ${CONDA_PYTHON} --version
+
+                    echo "Removing old venv if exists..."
+
+                    rm -rf venv
+
+                    echo "Creating fresh Python 3.11 virtual environment..."
 
                     ${CONDA_PYTHON} -m venv venv
 
+                    echo "Activating fresh venv..."
+
+                    ./venv/bin/python --version
+
+                    echo "Upgrading pip tools..."
+
                     ./venv/bin/pip install --upgrade pip setuptools wheel
+
+                    echo "Installing project requirements..."
 
                     ./venv/bin/pip install --prefer-binary -r requirements.txt --no-cache-dir
 
