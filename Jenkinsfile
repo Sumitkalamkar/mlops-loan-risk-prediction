@@ -5,13 +5,13 @@ pipeline {
         choice(
             name: 'SKIP_TRAINING',
             choices: ['false', 'true'],
-            description: 'Skip training and use existing model (for deployment only)'
+            description: 'Skip training and use existing model'
         )
 
         string(
             name: 'MIN_ACCURACY',
             defaultValue: '0.70',
-            description: 'Minimum model accuracy threshold for quality gate'
+            description: 'Minimum model accuracy threshold'
         )
     }
 
@@ -19,8 +19,9 @@ pipeline {
         PROJECT_NAME = "loan-risk-prediction"
         DOCKER_IMAGE = "loan-risk-app"
         CONTAINER_NAME = "loan-risk-container"
-        MLFLOW_PORT = "5000"
         API_PORT = "8000"
+        MLFLOW_PORT = "5000"
+        AWS_DEFAULT_REGION = "ap-south-1"
     }
 
     stages {
@@ -36,19 +37,9 @@ pipeline {
 
         stage('Setup Environment') {
             steps {
-                echo "Setting up Python environment..."
+                echo "Setting up Python virtual environment..."
 
                 sh '''
-                    apt-get update
-
-                    apt-get install -y \
-                    python3 \
-                    python3-pip \
-                    python3-venv \
-                    git \
-                    docker.io \
-                    curl
-
                     python3 --version
                     pip3 --version
 
@@ -58,7 +49,7 @@ pipeline {
 
                     ./venv/bin/pip install -r requirements.txt --no-cache-dir
 
-                    echo "Installed packages successfully"
+                    echo "Installed dependencies successfully"
 
                     ./venv/bin/python --version
                     ./venv/bin/dvc --version
@@ -67,9 +58,22 @@ pipeline {
             }
         }
 
-        stage('Pull Data from DVC Remote') {
+        stage('Configure AWS') {
             steps {
-                echo "Pulling dataset and artifacts from S3..."
+                echo "Configuring AWS region..."
+
+                sh '''
+                    mkdir -p ~/.aws
+
+                    echo "[default]" > ~/.aws/config
+                    echo "region=${AWS_DEFAULT_REGION}" >> ~/.aws/config
+                '''
+            }
+        }
+
+        stage('Pull Data From DVC Remote') {
+            steps {
+                echo "Pulling data and models from S3..."
 
                 sh '''
                     ./venv/bin/dvc pull
@@ -91,6 +95,7 @@ pipeline {
         }
 
         stage('Run ML Pipeline') {
+
             when {
                 expression {
                     params.SKIP_TRAINING == 'false'
@@ -98,7 +103,7 @@ pipeline {
             }
 
             steps {
-                echo "Running DVC ML pipeline..."
+                echo "Running DVC pipeline..."
 
                 sh '''
                     ./venv/bin/dvc repro
@@ -107,6 +112,7 @@ pipeline {
         }
 
         stage('Quality Gate') {
+
             when {
                 expression {
                     params.SKIP_TRAINING == 'false'
@@ -114,7 +120,7 @@ pipeline {
             }
 
             steps {
-                echo "Checking model quality..."
+                echo "Checking model metrics..."
 
                 sh '''
                     python3 - <<EOF
@@ -128,19 +134,20 @@ accuracy = metrics.get("accuracy", 0)
 
 print(f"Model Accuracy: {accuracy}")
 
-minimum = float("${MIN_ACCURACY}")
+threshold = float("${MIN_ACCURACY}")
 
-if accuracy < minimum:
-    print(f"FAILED: Accuracy {accuracy} < {minimum}")
+if accuracy < threshold:
+    print(f"FAILED: Accuracy {accuracy} < {threshold}")
     sys.exit(1)
 
-print(f"PASSED: Accuracy {accuracy} >= {minimum}")
+print(f"PASSED: Accuracy {accuracy} >= {threshold}")
 EOF
                 '''
             }
         }
 
-        stage('Push Artifacts to S3') {
+        stage('Push Artifacts To S3') {
+
             when {
                 expression {
                     params.SKIP_TRAINING == 'false'
@@ -148,7 +155,7 @@ EOF
             }
 
             steps {
-                echo "Pushing updated artifacts to S3..."
+                echo "Pushing artifacts to S3..."
 
                 sh '''
                     ./venv/bin/dvc push
@@ -161,14 +168,14 @@ EOF
                 echo "Building Docker image..."
 
                 sh '''
-                    docker build -t ${DOCKER_IMAGE} .
+                    docker build -t ${DOCKER_IMAGE}:latest .
                 '''
             }
         }
 
         stage('Deploy Application') {
             steps {
-                echo "Deploying FastAPI application..."
+                echo "Deploying FastAPI container..."
 
                 sh '''
                     docker stop ${CONTAINER_NAME} || true
@@ -178,7 +185,7 @@ EOF
                     docker run -d \
                     --name ${CONTAINER_NAME} \
                     -p ${API_PORT}:8000 \
-                    ${DOCKER_IMAGE}
+                    ${DOCKER_IMAGE}:latest
                 '''
             }
         }
@@ -199,21 +206,24 @@ EOF
     post {
 
         success {
+
             echo '''
 ===================================================
 PIPELINE COMPLETED SUCCESSFULLY
 ===================================================
 
-Application URL:
-http://YOUR_EC2_PUBLIC_IP:8000/docs
+FastAPI URL:
+http://YOUR_PUBLIC_IP:8000/docs
 
 MLflow URL:
-http://YOUR_EC2_PUBLIC_IP:5000
+http://YOUR_PUBLIC_IP:5000
+
 ===================================================
 '''
         }
 
         failure {
+
             echo '''
 ===================================================
 PIPELINE FAILED
@@ -222,6 +232,7 @@ PIPELINE FAILED
         }
 
         always {
+
             echo "Collecting pipeline artifacts..."
 
             sh '''
