@@ -548,10 +548,4 @@ DVC_REMOTE=myremote
 
 ---
 
-## Support
 
-For issues or questions:
-1. Check **Troubleshooting** section above
-2. Review Jenkins logs: `Jenkins → Build → Console Output`
-3. Check container logs: `docker logs webapp`
-4. Verify AWS credentials: `aws s3 ls s3://mlops-loan-risk-gfg/`
